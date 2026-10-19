@@ -1,0 +1,41 @@
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Pickle、臨時資料
+*.pkl
+exp_data/
+graphs/
+resources/umls_data/
+
+# 先前提到的 cache/output
+retrieval_cache/
+triples_output/
+checkpoints/
+
+# Secrets / local env（絕不進 git）
+.env
+.env.local
+.secrets/
+
+# 評估用外部資料集（自行下載）
+test/fixtures/scifact/
+figures/
+.vis-network-*.min.js
+
+# 實驗殘留腳本（本機保留，不上傳）
+archive/
+
+# 訓練輸出 / checkpoint
+BAT_checkpoints/
+rgat_beta_checkpoints*/
+out/
+cache/
+*.log
+/*.png
+
+# 備份與分析工具產物
+*.gemini-bak/
+graphify-out/
+
+paper_revision/

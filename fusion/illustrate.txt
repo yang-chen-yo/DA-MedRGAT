@@ -1,0 +1,47 @@
+| 參數               | 說明                                 |
+| ---------------- | ---------------------------------- |
+| K\_UMLS          | UMLS top-k 檢索數量                    |
+| K\_PUBMED        | PubMed top-k 檢索數量                  |
+| DECAY\_LAMBDA    | 時間衰減率 λ，在 `w = exp(-λ·Δyear)` 中使用  |
+| ALPHA\_SIM       | 相似度在最終分數中的權重 (`alpha * sim`)       |
+| BETA\_RECENCY    | 發表年份權重在最終分數中的權重 (`beta * recency`) |
+| RAG\_MODEL\_NAME | Hugging Face 上用於 RAG 抽取的 LLM 模型名稱  |
+| RAG\_MAX\_TOKENS | LLM 生成時的 `max_new_tokens` 上限       |
+
+檢索（Retrieval）階段
+
+向量化查詢：把整段病人文字（patient_context）送到 Encoder.encode() → 取得一個「查詢向量」qvec。
+
+UMLS 檢索：
+
+先把 UMLS 裡所有概念名稱也轉成向量，建立 FAISS 索引。
+
+用 qvec 在索引中做相似度搜尋，取前 K（預設 5）筆最接近的 concept（CUI）→ umls_hits，並把對應 cosine 分數當作邊權重。
+
+PubMed 檢索：
+
+從前處理的樣本 patient_fields 裡抽出所有「實體名稱」（疾病／藥物／手術名）。
+
+逐一把這些名稱當作關鍵詞呼叫 PubMedClient.search()，拿回 top-K 篇文章 ID，再用 fetch_abstracts() 撈摘要。
+
+將每篇摘要也 embed 成向量，計算與 qvec 的 cosine 相似度，並乘以時間衰減權重 → pubmed_hits，最後按分數排序。
+
+生成（Generation）階段
+
+Prompt 構造：把「病人摘要文字」＋「UMLS 事實片段」＋「PubMed 摘要片段」拼成一段給模型的說明文字（prompt）。
+
+呼叫本地 Llama/RAG 模型：將上述 prompt 透過 transformers.pipeline("text-generation") 傳給量化後的 Llama-2（或其他開源模型），去「推理」應該有哪些三元組。
+
+解析輸出：模型輸出是一大段文字，包含 JSON array，程式以正則抓出最末尾的 [...] 區塊，json.loads() 得到一個 List[Dict]，每個 Dict 就是一條 { head, head_type, relation, tail, tail_type, timestamp, source }。
+
+合併（Merge）階段
+
+UMLS 三元組：用前面 umls_hits 產生一組 Triple（source="UMLS"），每條邊的 weight 就是剛才的 cosine 相似度。
+
+RAG（PubMed）三元組：把解析出的那些 Dict 也封成 Triple（source="PubMed"），並把你選的 PubMed 分數（例如 top 篇摘要分數）填入 weight。
+
+輸出：
+
+若 accumulate=True，回傳全部打包好的 List[Triple]，方便後續 GNN 或存檔；
+
+同時可以把每個概念對應的 RAG 結果獨立寫成 patient_id/概念名.json 檔，做追蹤與 Debug。

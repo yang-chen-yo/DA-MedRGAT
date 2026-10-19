@@ -1,0 +1,20 @@
+| 方法                            | 輸入（Input）                                  | 輸出（Output）                                                                                      | 用途                                      |
+| ----------------------------- | ------------------------------------------ | ----------------------------------------------------------------------------------------------- | --------------------------------------- |
+| `query_by_codes(codes)`       | `codes: List[str]`<br>範例：`['I10','E11.9']` | `List[Dict]`，每筆：<br>`{'code':'I10','cui':'C0006111','name':'hypertension'}`                     | 將 ICD-10CM code 轉成 UMLS CUI，並取名稱，產生「節點」 |
+| `query_relations(cui)`        | `cui: str`<br>範例：`'C0006111'`              | `List[Dict]`，每筆：<br>`{'relation':'may_treat','cui1':'C0006111','cui2':'C0011849','weight':1.0}` | 查 CUI 之間的「關係邊」，為構建知識圖的「邊」               |
+| `query_umls(codes)` (wrapper) | 同上                                         | 同上                                                                                              | 方便一行呼叫，不需先建立 client                     |
+
+幫助 
+節點（Nodes）建立：用 query_by_codes 得到的 {code, cui, name} 對應知識圖中「疾病」或「藥物」節點，並將其標上 CUI 與可讀名稱。
+邊（Edges）建立：用 query_relations(cui) 拿到所有關係三元組 {relation, cui1, cui2, weight}，直接生成 Neo4j 中的邊：
+
+---------
+PubMed 抓取文獻
+
+| 函式 / 方法                                                  | 主要用途                        | 需要的輸入                           | 回傳格式                                         | 附註                                     |
+| -------------------------------------------------------- | --------------------------- | ------------------------------- | -------------------------------------------- | -------------------------------------- |
+| `PubMedClient(email, api_key=None)`                      | 建立 PubMed 客戶端物件             | `email` (必填) <br>`api_key` (選填) | `PubMedClient` 實例                            | `email` 依 NCBI 規定必填；申請 API Key 可提升流量上限 |
+| `client.search(term, retmax=5)`                          | 用 **ESearch** 依關鍵字找 PMID 清單 | `term`：搜尋字串 <br>`retmax`：最多回傳筆數 | `List[str]` (PMID)                           | 使用 `retmode=json`                      |
+| `client.fetch_abstracts(pmids)`                          | 用 **EFetch** 抓標題＋摘要 (XML)   | `pmids`：`List[str]`             | `List[Dict]` - 每筆含 `pmid / title / abstract` | 自動串連多段 `<AbstractText>`                |
+| `search_pubmed(keywords, email, api_key=None, retmax=5)` | **一行完成** 搜尋+抓摘要             | `keywords`：`List[str]`          | `List[Dict]`，多一欄 `keyword`                   | 內部：`search` ➜ `fetch_abstracts`        |
+

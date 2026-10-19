@@ -1,0 +1,44 @@
+task_fn.py：任務樣本生成（Task Sample Generation）
+
+接收 PyHealth 的 Patient 物件（含多次 Visit）
+
+過濾：排除缺少診斷/手術/處方 codes 的訪視，或不足訪次的患者
+
+截取：依任務把處方截為 ATC 第 3 級（drugrec），或計算下次訪視的 label（死亡率/再入院/LOS）
+
+累積歷史：把前一次（或前 n−1 次）訪次的 conditions、procedures、drugs 疊加成當前樣本的上下文
+
+最後回傳一串 dict：{"visit_id", "patient_id", "conditions", "procedures", "drugs", "label"/"drugs_all"…}
+
+data/loader.py：資料讀取與快取
+
+負責跟 PyHealth 接口，將 MIMIC-IV 原始 CSV 表格（診斷、手術、處方）讀進來
+
+根據 code_mapping（NDC→ATC³、ICD9/ICD10→CCSCM/CCSPROC）把原始代碼「映射」到我們要用的群組代碼
+
+依 task（drugrec、mortality、readmission、lenofstay）選擇對應的樣本生成函式（*_mimic4_fn）
+
+支援「快取」：第一次跑會把 sample_dataset 存成 pickle，之後 load_processed=True 就直接載入，省去重複讀檔
+
+data/preprocess.py：通用前處理工具
+
+flatten：把巢狀的「歷史訪視清單」攤平成一維列表，方便後面統計／聚合
+
+multihot & prepare_label/prepare_drug_indices：
+
+只在 drugrec 任務時用到，把「患者所有可能藥物清單」先建立字典，再把每次訪視的 drugs 列表轉成 multi-hot 向量
+
+pad_and_convert：將「每次就診的節點編碼」反序（最近在前）、multi-hot 編碼，並 pad 到固定
+
+| 任務名稱       | 是否有標籤     | 可否計算準確率                       | 輸出型態           |
+| ------------- | -------------- | ---------------------------------- | ----------------- |
+| **藥物推薦**   | 否（多標籤）    | ✘（可用 precision\@k, recall\@k） | 預測下一次用藥清單      |
+| **死亡率預測**  | ✅（0 or 1） | ✅                             | 預測病患是否死亡       |
+| **再入院預測**  | ✅（0 or 1） | ✅                             | 預測是否在 15 天內再入院 |
+| **住院天數分類** | ✅（0–9 類別） | ✅（分類）                         | 預測住院時間分類       |
+
+| 資料集     | 比例  | 說明                    |
+| ------- | --- | --------------------------- |
+| `train` | 80% | 用於訓練模型                |
+| `val`   | 10% | 用於驗證模型（例如 early stop） |
+| `test`  | 10% | 用於最終測試模型效能            |
